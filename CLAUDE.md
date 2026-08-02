@@ -86,17 +86,66 @@ essas variáveis em vez de cores soltas.
 
 ## Deploy
 
-GitHub Pages: Settings → Pages → branch `main`, pasta `/docs`.
-Depois de publicar, adicionar a URL do Pages em
-Supabase → Authentication → URL Configuration (Site URL e Redirect URLs).
+- Repositório: **github.com/ggiulianobi/letstradetcg-binder** (público).
+- GitHub Pages: branch `main`, pasta `/docs`, ativado via API (`gh api`).
+- Domínio: **letstradetcg.com.br** (registrado na GoDaddy). DNS: 4 registros
+  `A` em `@` pros IPs do GitHub Pages (185.199.108/109/110/111.153) +
+  `CNAME www` → `ggiulianobi.github.io`. Arquivo `docs/CNAME` no repo
+  guarda o domínio pro GitHub Pages reconhecer.
+- Certificado HTTPS do domínio custom é emitido automaticamente pelo
+  GitHub (Let's Encrypt) depois que o DNS verifica — não precisa fazer
+  nada, só esperar propagar.
+- Supabase → Authentication → URL Configuration: Site URL e Redirect URLs
+  já apontando pra `https://letstradetcg.com.br`.
+- E-mail transacional: **Resend** (domínio `letstradetcg.com.br` verificado
+  lá) configurado como Custom SMTP em Supabase → Authentication → Emails →
+  SMTP Settings. Isso é **obrigatório**: o Supabase bloqueia a edição do
+  conteúdo dos templates de e-mail (botão "Source") até ter um SMTP
+  próprio configurado — não dá pra só trocar pra `{{ .Token }}` sem isso.
 
 ## Estado atual / próximos passos
 
-O MVP está completo e não testado em produção ainda. Pendências conhecidas:
+**MVP em produção, testado de ponta a ponta em 2026-08-02**: cadastro →
+OTP por e-mail → criar binder → funcionando. Site publicado e domínio
+próprio no ar.
 
-1. Rodar o `schema.sql` no Supabase.
-2. Ajustar os templates de e-mail pra `{{ .Token }}`.
-3. Primeiro deploy no GitHub Pages e teste do fluxo completo
-   (cadastro → OTP → criar binder → upload → link público).
-4. Ideias não implementadas: editar carta já criada, reordenar cartas,
+Pendências conhecidas:
+
+1. Ideias não implementadas: editar carta já criada, reordenar cartas,
    página de perfil público do usuário listando todos os binders dele.
+2. Melhorias de UX/layout/imagens — usuário vai trazer uma lista na
+   próxima sessão.
+
+## Histórico de sessões
+
+> Convenção: a cada sessão de trabalho relevante, adicionar uma entrada
+> aqui (data + resumo do que foi feito/decidido/aprendido). É assim que
+> o contexto passa de uma janela de conversa pra outra.
+
+**2026-08-02 — Deploy inicial e primeiro cadastro funcionando**
+- Pasta do projeto estava com ACL do Windows travada pra escrita (só
+  Administradores); corrigido com `icacls ... /grant usuario:(OI)(CI)F`
+  rodado em PowerShell elevado. Se voltar a acontecer, é isso.
+- `gh` CLI instalado via winget (não vinha no ambiente) e autenticado via
+  `gh auth login --web` (device code flow).
+- Repo git criado do zero, primeiro commit, push pra
+  `ggiulianobi/letstradetcg-binder`, GitHub Pages ativado via `gh api`.
+- Domínio `letstradetcg.com.br` comprado na GoDaddy; DNS configurado
+  (A records + CNAME www) apontando pro GitHub Pages.
+- Descoberto que o Supabase **não deixa editar templates de e-mail sem
+  Custom SMTP configurado** (trava o botão "Source"). Resolvido
+  configurando Resend como SMTP.
+- Armadilha: `signUp()` do Supabase não reenvia e-mail nem dá erro se o
+  e-mail já existe no sistema (evita enumeration attack) — durante os
+  testes isso pareceu "e-mail não enviado" quando na verdade era reuso
+  do mesmo e-mail de teste anterior. Usar e-mail novo (ou apagar o
+  usuário em Authentication → Users) pra re-testar cadastro do zero.
+- O comprimento do código OTP gerado pelo Supabase **não é fixo em 6**
+  (veio 8 no teste real) — front-end ajustado pra aceitar 4-10 dígitos
+  em vez de travar em 6.
+- A tabela `profiles` real no banco estava com um schema antigo/quebrado
+  (colunas `username`/`display_name` em vez de `full_name`/`nickname`,
+  `birthdate` sem tipo — erro de sintaxe, faltava tabela `binders`
+  inteira). Dropado e recriado do zero com o `schema.sql` correto do
+  repo — pendente antigo do projeto que nunca tinha sido de fato
+  aplicado no banco.
