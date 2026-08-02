@@ -121,6 +121,7 @@
     const { data: binders, error } = await supabaseClient
       .from("binders")
       .select("id, name, views, profiles(nickname), cards(image_path, created_at)")
+      .eq("is_public", true)
       .order("views", { ascending: false })
       .limit(10);
 
@@ -185,6 +186,7 @@
     const { data: binders, error } = await supabaseClient
       .from("binders")
       .select("id, name, profiles(nickname)")
+      .eq("is_public", true)
       .ilike("name", `%${term}%`)
       .limit(8);
 
@@ -212,6 +214,7 @@
     const { data: binders, error } = await supabaseClient
       .from("binders")
       .select("id, name, views, profiles(nickname), cards(image_path, created_at)")
+      .eq("is_public", true)
       .order("created_at", { ascending: false })
       .limit(48);
 

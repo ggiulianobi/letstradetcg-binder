@@ -217,3 +217,18 @@ end;
 $$;
 
 grant execute on function complete_trade_request(uuid) to authenticated;
+
+-- ======================================================
+-- Adições — toggle de binder público/pesquisável.
+-- Roda só uma vez (a segunda linha é uma migração pontual pros
+-- binders que já existiam antes dessa coluna existir).
+-- ======================================================
+
+-- 7) Binder só aparece em carrossel/diretório/busca se is_public = true.
+-- O link direto (binder.html?b=<id>) sempre funciona, público ou não —
+-- isso não muda a policy de select, só o filtro usado nas listagens.
+alter table binders add column if not exists is_public boolean not null default false;
+
+-- Preserva a visibilidade dos binders criados antes dessa coluna existir
+-- (senão eles somem da home/busca de uma hora pra outra).
+update binders set is_public = true where is_public = false;

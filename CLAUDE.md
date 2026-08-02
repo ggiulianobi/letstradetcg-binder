@@ -131,11 +131,22 @@ pra próxima). Progresso:
   mascote "Leya"**, isso ficou de fora por não ter ferramenta de geração
   de imagem nesse ambiente; trocar por arte de verdade é troca de 1
   linha de `<link>` quando tiver a arte pronta).
-- ⏳ **Fase 2** (pendente): classificação dinâmica por foto — uma foto
-  pode conter várias cartas, cada uma com sua própria linha de
-  condição/preço/troca-venda/observação (usa `card_items`). Grid mostra
-  contador `N×` quando tem mais de 1 item; lightbox ganha painel de
-  texto com o detalhe de cada linha.
+- ✅ **Fase 2 + extra** (classificação dinâmica, edição de carta e
+  toggle público/privado): uma foto pode ter várias "linhas" de
+  classificação (condição/preço/troca-venda/observação), usando
+  `card_items`. Upload (`dashboard.html`) tem botão "+ Adicionar linha";
+  cartas já criadas agora têm botão de **editar** (lápis, abre modal com
+  as mesmas linhas pra alterar — salvar apaga e recria as linhas, sem
+  diff fino). Grid mostra `N×` no badge de condição quando tem mais de
+  1 item, e "N itens — toque para ver" na tag em vez de tentar somar
+  preços (preço é texto livre). Lightbox (dashboard e binder.html)
+  ganhou painel lateral com o detalhe de cada linha. Também adicionado
+  (pedido extra do dono, fora da lista original de 9): `binders.is_public`
+  — toggle "Pesquisável" no dashboard; binder **nasce privado** (não
+  aparece em carrossel/diretório/busca até o dono ligar o toggle), mas o
+  **link direto sempre funciona** independente do toggle — só afeta as
+  listagens públicas, não a policy de select. Binders que já existiam
+  antes dessa coluna foram migrados pra `is_public = true` (não somem).
 - ⏳ **Fase 3** (pendente): botão "Let's Trade!" no binder público
   (visitante logado manda pedido de interesse pro dono, com link do
   próprio binder dele); painel de notificações no dashboard; checkbox
@@ -147,6 +158,11 @@ pra próxima). Progresso:
   listando os binders do usuário + contador de trocas concluídas;
   bloquear apelidos reservados (`index, register, reset-password,
   dashboard, binder, 404, cname, favicon`) no cadastro.
+- ⏳ **Limpeza pendente**: depois que Fase 2 estiver confirmada em
+  produção por um tempo, rodar `ALTER TABLE cards DROP COLUMN
+  condition, DROP COLUMN price, DROP COLUMN for_trade, DROP COLUMN
+  for_sale;` — essas colunas não são mais usadas pelo front-end (tudo
+  migrou pra `card_items`), ficaram só como rede de segurança.
 
 Plano detalhado (schema exato, decisões de RLS, UX do grid multi-item
 etc.) está documentado nesta sessão — se uma sessão futura for continuar
@@ -211,3 +227,21 @@ só perguntar, mas os pontos essenciais já estão resumidos acima.
   de imagem no ambiente) — o dono topou seguir só com favicon genérico
   por enquanto.
 - Fase 1 implementada e no ar: ver resumo em "Estado atual" acima.
+- **Armadilha ao rodar SQL:** o dono quase rodou o script antigo de
+  `drop table cards/binders/profiles cascade` de novo (achou que era o
+  bloco novo, copiou o arquivo inteiro por engano) — isso teria apagado
+  todos os dados reais. Ele só colou pra eu conferir antes de rodar, não
+  chegou a executar. Lição: sempre que pedir pra rodar SQL no Supabase,
+  dar o trecho exato isolado (não "abra o arquivo e rode"), porque o
+  `schema.sql` local acumula os blocos antigos de correção junto com as
+  adições novas.
+- Depois da Fase 1, o dono pediu 2 melhorias extras direto (fora da
+  lista original): editar cartas já criadas, e o toggle de
+  público/privado. Confirmado com ele antes de implementar: binder
+  nasce **privado**, e "não pesquisável" não bloqueia o link direto
+  (só tira de busca/carrossel/diretório) — decisão importante de
+  produto/segurança, registrada pra não repetir a pergunta.
+- Fase 2 (+ os 2 extras) implementada e no ar: ver resumo em "Estado
+  atual" acima. Faltou rodar no Supabase o bloco de migração
+  (`alter table binders add column is_public...`), preciso confirmar
+  com o dono se já rodou antes de considerar essa fase 100% testada.

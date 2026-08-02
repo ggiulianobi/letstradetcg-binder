@@ -44,6 +44,7 @@
   <img id="lbImg" src="" alt="">
   <button class="lightbox-nav next" id="lbNext">›</button>
   <div class="lightbox-num" id="lbNum"></div>
+  <div class="lightbox-info" id="lbInfo"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -96,38 +97,79 @@
       return;
     }
 
+    const { data: items } = await supabaseClient
+      .from("card_items").select("*").in("card_id", cards.map(c => c.id))
+      .order("created_at", { ascending:true });
+
+    const itemsByCard = {};
+    (items || []).forEach(it => { (itemsByCard[it.card_id] ||= []).push(it); });
+
     grid.innerHTML = "";
     cards.forEach((c, i) => {
       const url = supabaseClient.storage.from(BUCKET).getPublicUrl(c.image_path).data.publicUrl;
       cardUrls.push(url);
-      const flags = [c.for_trade && "Troca", c.for_sale && "Venda"].filter(Boolean);
+      const cardItems = itemsByCard[c.id] || [];
+      cardItemsList.push(cardItems);
+
+      const n = cardItems.length;
+      const condBadge = n <= 1 ? (cardItems[0]?.condition || "—") : `${n}×`;
+      const tagHTML = n <= 1
+        ? (() => {
+            const it = cardItems[0] || {};
+            const flags = [it.for_trade && "Troca", it.for_sale && "Venda"].filter(Boolean);
+            return `
+              <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
+              <span class="price">${it.price ? "R$ " + it.price : "Consulte"}</span>
+            `;
+          })()
+        : `<span class="price">${n} itens — toque para ver</span>`;
+
       const el = document.createElement("div");
       el.className = "card";
       el.dataset.index = i;
       el.innerHTML = `
         <span class="num">#${String(i+1).padStart(2,"0")}</span>
-        <span class="cond">${c.condition || "—"}</span>
+        <span class="cond">${condBadge}</span>
         <img src="${url}" alt="Carta ${i+1}" loading="lazy">
         <div class="holo-sheen"></div>
-        <div class="tag">
-          <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
-          <span class="price">${c.price ? "R$ " + c.price : "Consulte"}</span>
-        </div>
+        <div class="tag">${tagHTML}</div>
       `;
       grid.appendChild(el);
     });
+  }
+
+  function renderLightboxInfo(items){
+    if(!items.length){
+      return `<p style="color:var(--ink-dim); font-size:13px;">Sem informações cadastradas.</p>`;
+    }
+    return items.map(it => {
+      const flags = [it.for_trade && "Troca", it.for_sale && "Venda"].filter(Boolean);
+      return `
+        <div class="li-item">
+          <div class="li-top">
+            <span class="li-cond">${it.condition || "—"}</span>
+            <span class="li-price">${it.price ? "R$ " + it.price : "Consulte"}</span>
+          </div>
+          <div class="li-flags">${flags.map(f => `<span>${f}</span>`).join("")}</div>
+          ${it.note ? `<div class="li-note">"${it.note}"</div>` : ""}
+        </div>`;
+    }).join("");
   }
 
   // Lightbox
   const lb = document.getElementById("lightbox");
   const lbImg = document.getElementById("lbImg");
   const lbNum = document.getElementById("lbNum");
+  const lbInfo = document.getElementById("lbInfo");
+  let cardItemsList = [];
   let current = 0;
 
   function openLB(i){
     current = i;
     lbImg.src = cardUrls[i];
     lbNum.textContent = `${String(i+1).padStart(2,"0")} / ${String(cardUrls.length).padStart(2,"0")}`;
+    const items = cardItemsList[i] || [];
+    lbInfo.innerHTML = `<h4>${items.length} ${items.length === 1 ? "item" : "itens"}</h4>${renderLightboxInfo(items)}`;
     lb.classList.add("open");
   }
   function step(d){

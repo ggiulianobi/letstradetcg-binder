@@ -41,6 +41,13 @@
           <button class="btn secondary small" id="copyBtn" style="margin-left:8px;">Copiar</button>
           <button class="btn secondary small" id="deleteBinderBtn" style="margin-left:4px;">Apagar binder</button>
         </div>
+        <div class="visibility-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="publicToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="publicToggleLabel">Pesquisável: não</span>
+        </div>
       </div>
 
       <button class="upload-trigger" id="uploadTrigger">
@@ -71,9 +78,23 @@
   </div>
 </div>
 
+<!-- Modal: editar carta -->
+<div class="modal-overlay" id="editCardModal">
+  <div class="modal wide">
+    <h3 class="display">Editar carta</h3>
+    <img id="editCardImg" src="" alt="" style="width:120px; display:block; margin:0 auto 16px; border-radius:10px;">
+    <div class="items-list" id="editItemsList"></div>
+    <button type="button" class="add-line-btn" id="addEditLineBtn">+ Adicionar linha (outra carta nessa foto)</button>
+    <div class="msg" id="editMsg"></div>
+    <button class="btn" id="saveEditBtn">Salvar alterações</button>
+    <button class="btn secondary" id="cancelEditBtn" style="margin-top:8px;">Cancelar</button>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox">
   <button class="lightbox-close" id="lbClose">✕</button>
   <img id="lbImg" src="" alt="">
+  <div class="lightbox-info" id="lbInfo"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
@@ -134,6 +155,10 @@
     const url = `${location.origin}${location.pathname.replace("dashboard.html","")}binder.html?b=${activeBinder.id}`;
     document.getElementById("shareLink").textContent = url;
 
+    document.getElementById("publicToggle").checked = !!activeBinder.is_public;
+    document.getElementById("publicToggleLabel").textContent =
+      activeBinder.is_public ? "Pesquisável: sim" : "Pesquisável: não";
+
     document.querySelectorAll("#binderList button").forEach(btn =>
       btn.classList.toggle("active", btn.dataset.id === id)
     );
@@ -177,6 +202,22 @@
     setTimeout(() => btn.textContent = "Copiar", 1500);
   };
 
+  document.getElementById("publicToggle").onchange = async (e) => {
+    const isPublic = e.target.checked;
+    const { error } = await supabaseClient
+      .from("binders").update({ is_public: isPublic }).eq("id", activeBinder.id);
+    if(error){
+      alert("Erro: " + error.message);
+      e.target.checked = !isPublic;
+      return;
+    }
+    activeBinder.is_public = isPublic;
+    const b = binders.find(x => x.id === activeBinder.id);
+    if(b) b.is_public = isPublic;
+    document.getElementById("publicToggleLabel").textContent =
+      isPublic ? "Pesquisável: sim" : "Pesquisável: não";
+  };
+
   // ---------- Upload → formulário "Criar folha" ----------
   const trigger = document.getElementById("uploadTrigger");
   const fileInput = document.getElementById("fileInput");
@@ -211,32 +252,101 @@
     uploadMsg.className = "msg";
   }
 
+  // ---------- Linhas de classificação (uma foto pode ter várias cartas) ----------
+  function itemLineHTML(data){
+    data = data || {};
+    const esc = s => (s || "").replace(/"/g, "&quot;");
+    return `
+      <div class="item-line">
+        <button type="button" class="remove-line-btn" title="Remover linha">✕</button>
+        <div class="field">
+          <label>Estado da carta</label>
+          <select class="cond-select">
+            ${CONDITIONS.map(c => `<option value="${c}" ${data.condition===c?"selected":""}>${c}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>Preço (BRL)</label>
+          <input type="text" class="price-input" placeholder="ex: 25,00" value="${esc(data.price)}">
+        </div>
+        <div class="checkbox-row">
+          <label><input type="checkbox" class="trade-check" ${data.for_trade?"checked":""}> Troca</label>
+          <label><input type="checkbox" class="sale-check" ${data.for_sale?"checked":""}> Venda</label>
+        </div>
+        <div class="field note-field">
+          <label>Observação (opcional — ex: "carta da esquerda")</label>
+          <input type="text" class="note-input" maxlength="120" placeholder="pra indicar qual carta da foto" value="${esc(data.note)}">
+        </div>
+      </div>
+    `;
+  }
+
+  function setupLinesContainer(containerEl, addBtnEl){
+    function refreshRemoveButtons(){
+      const lines = containerEl.querySelectorAll(".item-line");
+      lines.forEach(line => {
+        const btn = line.querySelector(".remove-line-btn");
+        btn.style.visibility = lines.length > 1 ? "visible" : "hidden";
+        btn.onclick = () => {
+          if(containerEl.querySelectorAll(".item-line").length <= 1) return;
+          line.remove();
+          refreshRemoveButtons();
+        };
+      });
+    }
+    addBtnEl.onclick = () => {
+      containerEl.insertAdjacentHTML("beforeend", itemLineHTML());
+      refreshRemoveButtons();
+    };
+    refreshRemoveButtons();
+  }
+
+  function readLines(containerEl){
+    return Array.from(containerEl.querySelectorAll(".item-line")).map(line => ({
+      condition: line.querySelector(".cond-select").value,
+      price: line.querySelector(".price-input").value.trim(),
+      for_trade: line.querySelector(".trade-check").checked,
+      for_sale: line.querySelector(".sale-check").checked,
+      note: line.querySelector(".note-input").value.trim()
+    }));
+  }
+
+  function renderLightboxInfo(items){
+    if(!items.length){
+      return `<p style="color:var(--ink-dim); font-size:13px;">Sem informações cadastradas.</p>`;
+    }
+    return items.map(it => {
+      const flags = [it.for_trade && "Troca", it.for_sale && "Venda"].filter(Boolean);
+      return `
+        <div class="li-item">
+          <div class="li-top">
+            <span class="li-cond">${it.condition || "—"}</span>
+            <span class="li-price">${it.price ? "R$ " + it.price : "Consulte"}</span>
+          </div>
+          <div class="li-flags">${flags.map(f => `<span>${f}</span>`).join("")}</div>
+          ${it.note ? `<div class="li-note">"${it.note}"</div>` : ""}
+        </div>`;
+    }).join("");
+  }
+
+  // ---------- Upload de foto ----------
   function addPendingCard(blob){
     const previewUrl = URL.createObjectURL(blob);
     const el = document.createElement("div");
     el.className = "pending-card";
     el.innerHTML = `
       <img src="${previewUrl}" alt="pré-visualização">
-      <div class="form-fields">
-        <div class="field" style="margin:0;">
-          <label>Estado da carta</label>
-          <select class="cond-select">
-            ${CONDITIONS.map(c => `<option value="${c}">${c}</option>`).join("")}
-          </select>
+      <div class="lines-col">
+        <div class="items-list">${itemLineHTML()}</div>
+        <button type="button" class="add-line-btn">+ Adicionar linha (outra carta nessa foto)</button>
+        <div class="form-actions">
+          <button class="btn small create-btn">Criar folha</button>
         </div>
-        <div class="field" style="margin:0;">
-          <label>Preço (BRL)</label>
-          <input type="text" class="price-input" placeholder="ex: 25,00">
-        </div>
-        <div class="checkbox-row">
-          <label><input type="checkbox" class="trade-check"> Troca</label>
-          <label><input type="checkbox" class="sale-check"> Venda</label>
-        </div>
-      </div>
-      <div class="form-actions">
-        <button class="btn small create-btn">Criar folha</button>
       </div>
     `;
+
+    const itemsList = el.querySelector(".items-list");
+    setupLinesContainer(itemsList, el.querySelector(".add-line-btn"));
 
     el.querySelector(".create-btn").onclick = async (ev) => {
       const btn = ev.target;
@@ -253,20 +363,22 @@
         return;
       }
 
-      const { error: dbErr } = await supabaseClient.from("cards").insert({
+      const { data: cardRow, error: dbErr } = await supabaseClient.from("cards").insert({
         binder_id: activeBinder.id,
         user_id: user.id,
-        image_path: path,
-        condition: el.querySelector(".cond-select").value,
-        price: el.querySelector(".price-input").value.trim(),
-        for_trade: el.querySelector(".trade-check").checked,
-        for_sale: el.querySelector(".sale-check").checked
-      });
+        image_path: path
+      }).select().single();
 
       if(dbErr){
         alert("Erro ao salvar carta: " + dbErr.message);
         btn.disabled = false; btn.textContent = "Criar folha";
         return;
+      }
+
+      const lines = readLines(itemsList).map(l => ({ ...l, card_id: cardRow.id, user_id: user.id }));
+      const { error: itemsErr } = await supabaseClient.from("card_items").insert(lines);
+      if(itemsErr){
+        alert("Carta criada, mas houve erro ao salvar a classificação: " + itemsErr.message);
       }
 
       URL.revokeObjectURL(previewUrl);
@@ -280,6 +392,32 @@
   // ---------- Grid de cartas já salvas ----------
   const grid = document.getElementById("grid");
   let cardUrls = [];
+  let cardsData = [];
+
+  function tileHTML(i, url, items){
+    const n = items.length;
+    const condBadge = n <= 1 ? (items[0]?.condition || "—") : `${n}×`;
+    const tagHTML = n <= 1
+      ? (() => {
+          const it = items[0] || {};
+          const flags = [it.for_trade && "Troca", it.for_sale && "Venda"].filter(Boolean);
+          return `
+            <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
+            <span class="price">${it.price ? "R$ " + it.price : "Consulte"}</span>
+          `;
+        })()
+      : `<span class="price">${n} itens — toque para ver</span>`;
+
+    return `
+      <span class="num">#${String(i+1).padStart(2,"0")}</span>
+      <span class="cond">${condBadge}</span>
+      <img src="${url}" alt="Carta" loading="lazy">
+      <div class="holo-sheen"></div>
+      <button class="edit-btn" title="Editar">✎</button>
+      <button class="del-btn" title="Apagar">✕</button>
+      <div class="tag">${tagHTML}</div>
+    `;
+  }
 
   async function loadCards(){
     const { data: cards } = await supabaseClient
@@ -288,28 +426,31 @@
 
     grid.innerHTML = "";
     cardUrls = [];
+    cardsData = [];
 
-    (cards || []).forEach((c, i) => {
+    if(!cards || !cards.length){
+      grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--ink-dim);">Nenhuma carta nesse binder ainda.</p>`;
+      return;
+    }
+
+    const { data: items } = await supabaseClient
+      .from("card_items").select("*").in("card_id", cards.map(c => c.id))
+      .order("created_at", { ascending:true });
+
+    const itemsByCard = {};
+    (items || []).forEach(it => { (itemsByCard[it.card_id] ||= []).push(it); });
+
+    cards.forEach((c, i) => {
       const url = supabaseClient.storage.from(BUCKET).getPublicUrl(c.image_path).data.publicUrl;
+      const cardItems = itemsByCard[c.id] || [];
       cardUrls.push(url);
-      const flags = [c.for_trade && "Troca", c.for_sale && "Venda"].filter(Boolean);
+      cardsData.push({ ...c, items: cardItems });
+
       const el = document.createElement("div");
       el.className = "card";
-      el.innerHTML = `
-        <span class="num">#${String(i+1).padStart(2,"0")}</span>
-        <span class="cond">${c.condition || "—"}</span>
-        <img src="${url}" alt="Carta" loading="lazy">
-        <div class="holo-sheen"></div>
-        <button class="del-btn">✕</button>
-        <div class="tag">
-          <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
-          <span class="price">${c.price ? "R$ " + c.price : "Consulte"}</span>
-        </div>
-      `;
-      el.querySelector("img").onclick = () => {
-        document.getElementById("lbImg").src = url;
-        document.getElementById("lightbox").classList.add("open");
-      };
+      el.innerHTML = tileHTML(i, url, cardItems);
+      el.querySelector("img").onclick = () => openLB(i);
+      el.querySelector(".edit-btn").onclick = (ev) => { ev.stopPropagation(); openEditModal(c); };
       el.querySelector(".del-btn").onclick = async (ev) => {
         ev.stopPropagation();
         if(!confirm("Apagar essa carta?")) return;
@@ -319,15 +460,68 @@
       };
       grid.appendChild(el);
     });
-
-    if(!cards || !cards.length){
-      grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--ink-dim);">Nenhuma carta nesse binder ainda.</p>`;
-    }
   }
 
+  // ---------- Lightbox ----------
   const lb = document.getElementById("lightbox");
+  function openLB(i){
+    const card = cardsData[i];
+    document.getElementById("lbImg").src = cardUrls[i];
+    document.getElementById("lbInfo").innerHTML =
+      `<h4>${card.items.length} ${card.items.length === 1 ? "item" : "itens"}</h4>${renderLightboxInfo(card.items)}`;
+    lb.classList.add("open");
+  }
   document.getElementById("lbClose").onclick = () => lb.classList.remove("open");
   lb.addEventListener("click", e => { if(e.target === lb) lb.classList.remove("open"); });
+
+  // ---------- Modal: editar carta ----------
+  let editingCard = null;
+  const editModal = document.getElementById("editCardModal");
+  const editItemsList = document.getElementById("editItemsList");
+
+  function openEditModal(card){
+    editingCard = card;
+    document.getElementById("editCardImg").src =
+      supabaseClient.storage.from(BUCKET).getPublicUrl(card.image_path).data.publicUrl;
+    const items = cardsData.find(c => c.id === card.id)?.items || [];
+    editItemsList.innerHTML = items.length
+      ? items.map(it => itemLineHTML(it)).join("")
+      : itemLineHTML();
+    setupLinesContainer(editItemsList, document.getElementById("addEditLineBtn"));
+    document.getElementById("editMsg").className = "msg";
+    editModal.classList.add("open");
+  }
+
+  document.getElementById("cancelEditBtn").onclick = () => editModal.classList.remove("open");
+
+  document.getElementById("saveEditBtn").onclick = async () => {
+    const btn = document.getElementById("saveEditBtn");
+    const editMsg = document.getElementById("editMsg");
+    const lines = readLines(editItemsList);
+
+    if(!lines.length){
+      editMsg.className = "msg show error";
+      editMsg.textContent = "Adicione pelo menos uma linha.";
+      return;
+    }
+
+    btn.disabled = true;
+    // Simplifica: apaga as linhas antigas e recria com os novos valores
+    await supabaseClient.from("card_items").delete().eq("card_id", editingCard.id);
+    const { error } = await supabaseClient.from("card_items").insert(
+      lines.map(l => ({ ...l, card_id: editingCard.id, user_id: user.id }))
+    );
+    btn.disabled = false;
+
+    if(error){
+      editMsg.className = "msg show error";
+      editMsg.textContent = error.message;
+      return;
+    }
+
+    editModal.classList.remove("open");
+    loadCards();
+  };
 
   boot();
 </script>

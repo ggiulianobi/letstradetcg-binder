@@ -225,6 +225,20 @@ header p{ color:var(--ink-dim); max-width:560px; margin:0 auto; font-size:15px; 
 .binder-heading .share{ font-size:12px; color:var(--ink-dim); }
 .binder-heading .share code{ color:var(--holo-2); }
 
+.visibility-row{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; font-size:12px; color:var(--ink-dim); }
+.toggle-switch{ position:relative; display:inline-block; width:42px; height:24px; flex:none; }
+.toggle-switch input{ opacity:0; width:0; height:0; position:absolute; }
+.toggle-slider{
+  position:absolute; inset:0; cursor:pointer; background:var(--line);
+  border-radius:99px; transition:background .2s ease;
+}
+.toggle-slider::before{
+  content:""; position:absolute; width:18px; height:18px; left:3px; top:3px;
+  background:#fff; border-radius:50%; transition:transform .2s ease;
+}
+.toggle-switch input:checked + .toggle-slider{ background:var(--holo-2); }
+.toggle-switch input:checked + .toggle-slider::before{ transform:translateX(18px); }
+
 .upload-trigger{
   display:flex; flex-direction:column; align-items:center; gap:8px;
   width:100%; padding:28px; border-radius:16px; border:2px dashed var(--line);
@@ -244,9 +258,28 @@ header p{ color:var(--ink-dim); max-width:560px; margin:0 auto; font-size:15px; 
   border-radius:16px; padding:16px; flex-wrap:wrap;
 }
 .pending-card img{ width:100px; height:134px; object-fit:cover; border-radius:10px; flex:none; }
-.pending-card .form-fields{ flex:1; min-width:220px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.pending-card .form-fields .checkbox-row{ grid-column:1/-1; margin:4px 0 0; }
-.pending-card .form-actions{ flex:none; display:flex; align-items:flex-end; }
+.pending-card .lines-col{ flex:1; min-width:220px; }
+.pending-card .form-actions{ display:flex; margin-top:4px; }
+
+/* ---------- LINHAS DE CLASSIFICAÇÃO (upload + edição) ---------- */
+.items-list .item-line{
+  position:relative; border:1px solid var(--line); border-radius:12px; padding:14px;
+  margin-bottom:10px; display:grid; grid-template-columns:1fr 1fr; gap:10px;
+}
+.items-list .item-line .field{ margin:0; }
+.items-list .item-line .checkbox-row{ grid-column:1/-1; margin:2px 0 0; }
+.items-list .item-line .note-field{ grid-column:1/-1; margin:0; }
+.items-list .item-line .remove-line-btn{
+  position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:50%;
+  border:none; background:#ffffff14; color:var(--ink-dim); cursor:pointer; font-size:11px; line-height:1;
+}
+.items-list .item-line .remove-line-btn:hover{ background:var(--danger); color:#2b0b0b; }
+.add-line-btn{
+  display:block; width:100%; padding:10px; border-radius:10px; border:1px dashed var(--line);
+  background:none; color:var(--ink-dim); cursor:pointer; font-family:'Space Grotesk',sans-serif;
+  font-size:12px; margin-bottom:12px;
+}
+.add-line-btn:hover{ border-color:var(--holo-2); color:var(--holo-2); }
 
 /* ---------- CARD GRID ---------- */
 .grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
@@ -271,6 +304,11 @@ header p{ color:var(--ink-dim); max-width:560px; margin:0 auto; font-size:15px; 
   border:none; background:#000a; color:#fff; cursor:pointer; font-size:13px; line-height:1;
 }
 .card .del-btn:hover{ background:var(--danger); }
+.card .edit-btn{
+  position:absolute; top:74px; right:8px; z-index:3; width:26px; height:26px; border-radius:50%;
+  border:none; background:#000a; color:#fff; cursor:pointer; font-size:12px; line-height:1;
+}
+.card .edit-btn:hover{ background:var(--holo-2); color:#0b0d16; }
 .holo-sheen{
   position:absolute; inset:0; z-index:1;
   background:linear-gradient(115deg, transparent 30%, #ffffff33 45%, var(--holo-2)22 50%, transparent 65%);
@@ -290,10 +328,26 @@ header p{ color:var(--ink-dim); max-width:560px; margin:0 auto; font-size:15px; 
 /* ---------- LIGHTBOX ---------- */
 .lightbox{
   position:fixed; inset:0; background:#000000e6; backdrop-filter:blur(6px); display:none;
-  align-items:center; justify-content:center; z-index:50; padding:30px 16px;
+  align-items:center; justify-content:center; z-index:50; padding:30px 16px; gap:20px;
 }
-.lightbox.open{ display:flex; }
-.lightbox img{ max-width:min(92vw, 480px); max-height:80vh; border-radius:14px; box-shadow:0 20px 60px #000a; }
+.lightbox.open{ display:flex; flex-wrap:wrap; }
+.lightbox img{ max-width:min(92vw, 420px); max-height:80vh; border-radius:14px; box-shadow:0 20px 60px #000a; }
+.lightbox-info{
+  width:100%; max-width:320px; max-height:80vh; overflow-y:auto;
+  background:var(--bg-panel); border:1px solid var(--line); border-radius:14px;
+  padding:18px; color:var(--ink);
+}
+.lightbox-info h4{
+  margin:0 0 12px; font-family:'Space Grotesk',sans-serif; font-size:12px;
+  color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em;
+}
+.lightbox-info .li-item{ padding:10px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.lightbox-info .li-item:last-child{ border-bottom:none; padding-bottom:0; }
+.lightbox-info .li-item .li-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px; }
+.lightbox-info .li-item .li-cond{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+.lightbox-info .li-item .li-price{ color:var(--holo-4); font-weight:600; white-space:nowrap; }
+.lightbox-info .li-item .li-flags span{ background:#ffffff14; padding:2px 6px; border-radius:6px; font-size:10px; margin-right:4px; }
+.lightbox-info .li-item .li-note{ color:var(--ink-dim); font-size:12px; margin-top:5px; font-style:italic; }
 .lightbox-close{
   position:absolute; top:18px; right:18px; width:40px; height:40px; border-radius:50%;
   background:#ffffff14; border:1px solid #ffffff33; color:#fff; font-size:20px; cursor:pointer;
@@ -317,8 +371,9 @@ header p{ color:var(--ink-dim); max-width:560px; margin:0 auto; font-size:15px; 
 .modal-overlay.open{ display:flex; }
 .modal{
   background:#12162a; border:1px solid var(--line); border-radius:18px; padding:28px;
-  width:100%; max-width:380px;
+  width:100%; max-width:380px; max-height:90vh; overflow-y:auto;
 }
+.modal.wide{ max-width:480px; }
 .modal h3{ margin:0 0 18px; text-align:center; }
 
 /* ---------- WHATSAPP FLOAT ---------- */
