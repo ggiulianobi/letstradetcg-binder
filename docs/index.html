@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LetsTradeTCG Binder — monte sua pasta digital</title>
+<meta name="description" content="Monte sua pasta digital de cartas Pokémon TCG pra facilitar suas negociações de venda e troca.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/holo.css">
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">LetsTradeTCG Binder</div>
+  <div class="holo-bar"></div>
+  <h1 class="display">Monte sua pasta digital</h1>
+  <p>Pra facilitar suas negociações: coloque quantas imagens quiser, defina o estado das cartas, quanto você pede por elas em valor ou quanto quer em troca. Faça o seu preço e boas trocas! 🃏</p>
+</header>
+
+<div class="wrap">
+  <div class="panel" id="loginPanel">
+    <h2 class="display">Entrar</h2>
+    <p class="sub">Acesse pra gerenciar seus binders.</p>
+
+    <div class="msg" id="msg"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="email" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn" id="submitBtn">Entrar</button>
+    </form>
+
+    <div class="switcher-links">
+      <a href="reset-password.html">Esqueci a senha</a>
+      <a href="register.html">Sou novo aqui, registrar</a>
+    </div>
+  </div>
+
+  <div class="carousel-title">Binders em alta</div>
+  <div class="carousel" id="carousel"></div>
+  <div class="carousel-dots" id="carouselDots"></div>
+
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Buscar binder pelo nome...">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+</div>
+
+<footer>
+  Feito com carinho pra facilitar a negociação entre treinadores. 🃏
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script>
+  // Redirect if already logged in
+  supabaseClient.auth.getSession().then(({data}) => {
+    if(data.session) window.location.href = "dashboard.html";
+  });
+
+  const msg = document.getElementById("msg");
+  const submitBtn = document.getElementById("submitBtn");
+
+  document.getElementById("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if(error){
+      msg.textContent = error.message.includes("Invalid")
+        ? "E-mail ou senha incorretos."
+        : error.message;
+      msg.className = "msg show error";
+      submitBtn.disabled = false;
+      return;
+    }
+    window.location.href = "dashboard.html";
+  });
+
+  // ---------- Carousel: top viewed binders ----------
+  async function loadCarousel(){
+    const el = document.getElementById("carousel");
+    const dotsEl = document.getElementById("carouselDots");
+
+    const { data: binders, error } = await supabaseClient
+      .from("binders")
+      .select("id, name, views, profiles(nickname), cards(image_path, created_at)")
+      .order("views", { ascending: false })
+      .limit(10);
+
+    if(error || !binders || !binders.length){
+      el.innerHTML = `<div class="carousel-slide active" style="justify-content:center;">
+        <span style="color:var(--ink-dim); font-size:13px;">Nenhum binder público ainda — seja o primeiro a criar um!</span>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = "";
+    dotsEl.innerHTML = "";
+    binders.forEach((b, i) => {
+      const cover = b.cards && b.cards.length
+        ? supabaseClient.storage.from(BUCKET).getPublicUrl(b.cards[0].image_path).data.publicUrl
+        : "";
+      const slide = document.createElement("a");
+      slide.className = `carousel-slide ${i === 0 ? "active" : ""}`;
+      slide.href = `binder.html?b=${b.id}`;
+      slide.innerHTML = `
+        ${cover ? `<img src="${cover}" alt="${b.name}">` : ""}
+        <div class="info">
+          <b class="display">${b.name}</b>
+          <span>por ${b.profiles?.nickname ?? "?"} · ${b.views} visitas</span>
+        </div>
+      `;
+      el.appendChild(slide);
+
+      const dot = document.createElement("div");
+      dot.className = `dot ${i === 0 ? "active" : ""}`;
+      dotsEl.appendChild(dot);
+    });
+
+    if(binders.length > 1){
+      let current = 0;
+      setInterval(() => {
+        const slides = el.querySelectorAll(".carousel-slide");
+        const dots = dotsEl.querySelectorAll(".dot");
+        slides[current].classList.remove("active");
+        dots[current].classList.remove("active");
+        current = (current + 1) % slides.length;
+        slides[current].classList.add("active");
+        dots[current].classList.add("active");
+      }, 2000);
+    }
+  }
+  loadCarousel();
+
+  // ---------- Search ----------
+  const searchInput = document.getElementById("searchInput");
+  const searchResults = document.getElementById("searchResults");
+  let searchTimer;
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    const term = searchInput.value.trim();
+    if(!term){ searchResults.className = "search-results"; return; }
+    searchTimer = setTimeout(() => runSearch(term), 300);
+  });
+
+  async function runSearch(term){
+    const { data: binders, error } = await supabaseClient
+      .from("binders")
+      .select("id, name, profiles(nickname)")
+      .ilike("name", `%${term}%`)
+      .limit(8);
+
+    searchResults.className = "search-results show";
+    if(error || !binders || !binders.length){
+      searchResults.innerHTML = `<div class="empty">Nenhum binder encontrado com esse nome.</div>`;
+      return;
+    }
+    searchResults.innerHTML = binders.map(b => `
+      <a href="binder.html?b=${b.id}">
+        <span>${b.name}</span>
+        <span class="owner">${b.profiles?.nickname ?? ""}</span>
+      </a>
+    `).join("");
+  }
+
+  document.addEventListener("click", e => {
+    if(!e.target.closest(".search-box")) searchResults.className = "search-results";
+  });
+</script>
+
+</body>
+</html>

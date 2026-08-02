@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Criar conta — LetsTradeTCG Binder</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/holo.css">
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">LetsTradeTCG Binder</div>
+  <div class="holo-bar"></div>
+  <h1 class="display">Criar conta</h1>
+  <p>Preencha seus dados pra montar sua pasta digital e começar a negociar.</p>
+</header>
+
+<div class="wrap">
+  <!-- STEP 1: dados -->
+  <div class="panel wide" id="stepForm">
+    <div class="msg" id="msg"></div>
+
+    <form id="registerForm">
+      <div class="field">
+        <label>Nome completo</label>
+        <input type="text" id="fullName" maxlength="120" required>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Data de nascimento</label>
+          <input type="date" id="birthdate" required>
+        </div>
+        <div class="field">
+          <label>Estado</label>
+          <select id="state" required>
+            <option value="">Selecione...</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Vulgo / apelido (como te encontram)</label>
+        <input type="text" id="nickname" maxlength="30" pattern="[a-zA-Z0-9_\-]{3,30}" required>
+        <small>3 a 30 caracteres — letras, números, hífen ou underline.</small>
+      </div>
+
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="email" maxlength="120" required autocomplete="email">
+      </div>
+
+      <div class="field">
+        <label>WhatsApp (com DDI+DDD, só números)</label>
+        <input type="text" id="whatsapp" placeholder="5511999999999" maxlength="15">
+        <small>Usado no botão de contato do seu binder. Pode preencher depois.</small>
+      </div>
+
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="password" required autocomplete="new-password">
+        <small>Mínimo 8 caracteres, com 1 maiúscula, 1 número e 1 caractere especial.</small>
+      </div>
+
+      <button type="submit" class="btn" id="submitBtn">Continuar</button>
+    </form>
+
+    <div class="switcher">
+      Já tem conta? <a href="index.html">Entrar</a>
+    </div>
+  </div>
+
+  <!-- STEP 2: código de verificação -->
+  <div class="panel" id="stepOtp" style="display:none;">
+    <h2 class="display">Verifique seu e-mail</h2>
+    <p class="sub">Enviamos um código de 6 dígitos para <b id="otpEmail"></b>. Digite abaixo pra confirmar sua conta.</p>
+
+    <div class="msg" id="otpMsg"></div>
+
+    <form id="otpForm">
+      <div class="field">
+        <label>Código de verificação</label>
+        <input type="text" id="otpCode" class="otp-input" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required autocomplete="one-time-code">
+      </div>
+      <button type="submit" class="btn" id="otpBtn">Confirmar cadastro</button>
+    </form>
+
+    <div class="switcher">
+      Não recebeu? <a id="resendLink">Reenviar código</a>
+    </div>
+  </div>
+</div>
+
+<footer><a href="index.html">← Voltar</a></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script src="assets/states-br.js"></script>
+<script>
+  // Preenche o dropdown de estados
+  const stateSelect = document.getElementById("state");
+  BR_STATES.forEach(([uf, name]) => {
+    const opt = document.createElement("option");
+    opt.value = uf;
+    opt.textContent = `${uf} — ${name}`;
+    stateSelect.appendChild(opt);
+  });
+
+  const msg = document.getElementById("msg");
+  const otpMsg = document.getElementById("otpMsg");
+  const submitBtn = document.getElementById("submitBtn");
+  let pending = null; // guarda os dados do perfil até o OTP ser confirmado
+
+  function show(el, text, type){
+    el.textContent = text;
+    el.className = `msg show ${type}`;
+  }
+
+  function validPassword(pw){
+    return pw.length >= 8
+      && /[A-Z]/.test(pw)
+      && /[0-9]/.test(pw)
+      && /[^A-Za-z0-9]/.test(pw);
+  }
+
+  document.getElementById("registerForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+
+    const fullName  = document.getElementById("fullName").value.trim();
+    const birthdate = document.getElementById("birthdate").value;
+    const state     = stateSelect.value;
+    const nickname  = document.getElementById("nickname").value.trim().toLowerCase();
+    const email     = document.getElementById("email").value.trim();
+    const whatsapp  = document.getElementById("whatsapp").value.replace(/\D/g, "");
+    const password  = document.getElementById("password").value;
+
+    if(!validPassword(password)){
+      show(msg, "A senha precisa ter no mínimo 8 caracteres, com 1 letra maiúscula, 1 número e 1 caractere especial.", "error");
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // apelido já em uso?
+    const { data: taken } = await supabaseClient
+      .from("profiles").select("nickname").eq("nickname", nickname).maybeSingle();
+    if(taken){
+      show(msg, "Esse apelido já está em uso. Escolha outro.", "error");
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const { error } = await supabaseClient.auth.signUp({ email, password });
+    if(error){
+      show(msg, error.message, "error");
+      submitBtn.disabled = false;
+      return;
+    }
+
+    pending = { fullName, birthdate, state, nickname, whatsapp, email, password };
+    document.getElementById("otpEmail").textContent = email;
+    document.getElementById("stepForm").style.display = "none";
+    document.getElementById("stepOtp").style.display = "block";
+  });
+
+  document.getElementById("otpForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const otpBtn = document.getElementById("otpBtn");
+    otpBtn.disabled = true;
+
+    const token = document.getElementById("otpCode").value.trim();
+
+    const { data, error } = await supabaseClient.auth.verifyOtp({
+      email: pending.email,
+      token,
+      type: "signup"
+    });
+
+    if(error){
+      show(otpMsg, "Código inválido ou expirado. Confira e tente de novo.", "error");
+      otpBtn.disabled = false;
+      return;
+    }
+
+    // cria o perfil público agora que a conta está confirmada
+    const { error: profileError } = await supabaseClient.from("profiles").insert({
+      id: data.user.id,
+      full_name: pending.fullName,
+      nickname: pending.nickname,
+      birthdate: pending.birthdate,
+      state: pending.state,
+      whatsapp: pending.whatsapp
+    });
+
+    if(profileError){
+      show(otpMsg, "Conta confirmada, mas houve um erro ao salvar o perfil: " + profileError.message, "error");
+      otpBtn.disabled = false;
+      return;
+    }
+
+    window.location.href = "dashboard.html";
+  });
+
+  document.getElementById("resendLink").onclick = async () => {
+    const { error } = await supabaseClient.auth.resend({ type: "signup", email: pending.email });
+    show(otpMsg, error ? error.message : "Código reenviado! Confira seu e-mail.", error ? "error" : "ok");
+  };
+</script>
+
+</body>
+</html>

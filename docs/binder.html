@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binder — LetsTradeTCG</title>
+<meta name="description" content="Pasta digital de cartas Pokémon TCG para venda e troca.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/holo.css">
+</head>
+<body>
+
+<header>
+  <div class="eyebrow" id="ownerLine">Binder digital</div>
+  <div class="holo-bar"></div>
+  <h1 class="display" id="binderTitle">Carregando…</h1>
+  <p>Toque em qualquer carta pra ver em tamanho grande. Chame no WhatsApp pra negociar.</p>
+</header>
+
+<div class="wrap">
+  <div class="grid" id="grid"></div>
+</div>
+
+<footer>
+  <span id="footerMsg"></span><br>
+  <a href="index.html">Quer sua pasta digital também? Cadastre-se grátis</a>
+</footer>
+
+<a class="wa-float" id="waFloat" href="#" target="_blank" rel="noopener" style="display:none;">
+  <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16.001 3C9.373 3 4 8.373 4 15c0 2.386.653 4.618 1.789 6.532L4 29l7.65-1.752A11.94 11.94 0 0 0 16.001 27C22.628 27 28 21.627 28 15S22.628 3 16.001 3Zm0 21.818c-1.98 0-3.883-.516-5.547-1.492l-.398-.234-4.542 1.04 1.06-4.428-.26-.406A9.77 9.77 0 0 1 5.182 15c0-5.968 4.85-10.818 10.819-10.818S26.818 9.032 26.818 15 21.968 24.818 16.001 24.818Zm5.98-8.15c-.328-.164-1.94-.957-2.24-1.066-.3-.11-.518-.164-.737.164-.219.328-.845 1.066-1.037 1.285-.191.219-.383.246-.71.082-.328-.164-1.386-.51-2.64-1.628-.976-.87-1.635-1.945-1.826-2.273-.191-.328-.02-.505.144-.668.148-.147.328-.383.492-.574.164-.191.219-.328.328-.547.11-.219.055-.41-.027-.574-.082-.164-.737-1.777-1.01-2.434-.266-.64-.537-.553-.737-.563l-.628-.011c-.219 0-.574.082-.874.41-.3.328-1.146 1.12-1.146 2.73 0 1.61 1.174 3.166 1.337 3.385.164.219 2.31 3.527 5.598 4.945.782.338 1.393.54 1.869.69.785.25 1.5.215 2.065.13.63-.094 1.94-.793 2.213-1.558.273-.766.273-1.422.191-1.559-.082-.137-.3-.219-.628-.383Z"/></svg>
+  Chamar no WhatsApp
+</a>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lbClose">✕</button>
+  <button class="lightbox-nav prev" id="lbPrev">‹</button>
+  <img id="lbImg" src="" alt="">
+  <button class="lightbox-nav next" id="lbNext">›</button>
+  <div class="lightbox-num" id="lbNum"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script>
+  const binderId = new URLSearchParams(location.search).get("b");
+  const grid = document.getElementById("grid");
+  let cardUrls = [];
+
+  async function load(){
+    if(!binderId){
+      document.getElementById("binderTitle").textContent = "Binder não informado";
+      grid.innerHTML = `<p style="grid-column:1/-1; color:var(--ink-dim);">Peça o link completo pra quem te enviou.</p>`;
+      return;
+    }
+
+    const { data: binder } = await supabaseClient
+      .from("binders")
+      .select("id, name, views, user_id, profiles(nickname, whatsapp, state)")
+      .eq("id", binderId).maybeSingle();
+
+    if(!binder){
+      document.getElementById("binderTitle").textContent = "Binder não encontrado";
+      grid.innerHTML = `<p style="grid-column:1/-1; color:var(--ink-dim);">Esse binder não existe ou foi removido.</p>`;
+      return;
+    }
+
+    const owner = binder.profiles;
+    document.title = `${binder.name} — LetsTradeTCG`;
+    document.getElementById("binderTitle").textContent = binder.name;
+    document.getElementById("ownerLine").textContent =
+      `Binder de ${owner?.nickname ?? "?"}${owner?.state ? " · " + owner.state : ""}`;
+    document.getElementById("footerMsg").textContent = `${binder.views + 1} visitas neste binder 🃏`;
+
+    if(owner?.whatsapp){
+      const wa = document.getElementById("waFloat");
+      wa.href = `https://wa.me/${owner.whatsapp}?text=${encodeURIComponent("Olá! Vi seu binder \"" + binder.name + "\" e tenho interesse 🃏")}`;
+      wa.style.display = "flex";
+    }
+
+    // conta a visita
+    supabaseClient.rpc("increment_binder_views", { binder_id: binderId });
+
+    const { data: cards } = await supabaseClient
+      .from("cards").select("*").eq("binder_id", binderId)
+      .order("created_at", { ascending:true });
+
+    if(!cards || !cards.length){
+      grid.innerHTML = `<p style="grid-column:1/-1; color:var(--ink-dim); text-align:center;">Esse binder ainda não tem cartas.</p>`;
+      return;
+    }
+
+    grid.innerHTML = "";
+    cards.forEach((c, i) => {
+      const url = supabaseClient.storage.from(BUCKET).getPublicUrl(c.image_path).data.publicUrl;
+      cardUrls.push(url);
+      const flags = [c.for_trade && "Troca", c.for_sale && "Venda"].filter(Boolean);
+      const el = document.createElement("div");
+      el.className = "card";
+      el.dataset.index = i;
+      el.innerHTML = `
+        <span class="num">#${String(i+1).padStart(2,"0")}</span>
+        <span class="cond">${c.condition || "—"}</span>
+        <img src="${url}" alt="Carta ${i+1}" loading="lazy">
+        <div class="holo-sheen"></div>
+        <div class="tag">
+          <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
+          <span class="price">${c.price ? "R$ " + c.price : "Consulte"}</span>
+        </div>
+      `;
+      grid.appendChild(el);
+    });
+  }
+
+  // Lightbox
+  const lb = document.getElementById("lightbox");
+  const lbImg = document.getElementById("lbImg");
+  const lbNum = document.getElementById("lbNum");
+  let current = 0;
+
+  function openLB(i){
+    current = i;
+    lbImg.src = cardUrls[i];
+    lbNum.textContent = `${String(i+1).padStart(2,"0")} / ${String(cardUrls.length).padStart(2,"0")}`;
+    lb.classList.add("open");
+  }
+  function step(d){
+    current = ((current + d) % cardUrls.length + cardUrls.length) % cardUrls.length;
+    openLB(current);
+  }
+
+  grid.addEventListener("click", e => {
+    const card = e.target.closest(".card");
+    if(card) openLB(Number(card.dataset.index));
+  });
+  document.getElementById("lbClose").onclick = () => lb.classList.remove("open");
+  document.getElementById("lbPrev").onclick = () => step(-1);
+  document.getElementById("lbNext").onclick = () => step(1);
+  lb.addEventListener("click", e => { if(e.target === lb) lb.classList.remove("open"); });
+  document.addEventListener("keydown", e => {
+    if(!lb.classList.contains("open")) return;
+    if(e.key === "Escape") lb.classList.remove("open");
+    if(e.key === "ArrowLeft") step(-1);
+    if(e.key === "ArrowRight") step(1);
+  });
+
+  load();
+</script>
+
+</body>
+</html>

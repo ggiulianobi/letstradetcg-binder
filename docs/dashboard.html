@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meus binders — LetsTradeTCG</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/holo.css">
+</head>
+<body>
+
+<div class="navbar">
+  <span class="brand display">LetsTradeTCG Binder</span>
+  <div class="user">
+    <span id="userName">…</span>
+    <button id="logoutBtn">Sair</button>
+  </div>
+</div>
+
+<div class="dash">
+  <aside class="dash-sidebar">
+    <button class="add-binder-btn" id="addBinderBtn">
+      <span class="plus">+</span> Add new Binder
+    </button>
+    <div class="binder-list" id="binderList"></div>
+  </aside>
+
+  <main class="dash-main">
+    <div id="emptyState" style="text-align:center; padding:60px 20px; color:var(--ink-dim);">
+      <p>Você ainda não tem nenhum binder.<br>Clique em <b>Add new Binder</b> pra criar o primeiro.</p>
+    </div>
+
+    <div id="binderView" style="display:none;">
+      <div class="binder-heading">
+        <h2 class="display" id="binderName"></h2>
+        <div class="share">
+          Link público: <code id="shareLink"></code>
+          <button class="btn secondary small" id="copyBtn" style="margin-left:8px;">Copiar</button>
+          <button class="btn secondary small" id="deleteBinderBtn" style="margin-left:4px;">Apagar binder</button>
+        </div>
+      </div>
+
+      <button class="upload-trigger" id="uploadTrigger">
+        <span class="plus">+</span>
+        <strong>Adicionar cartas</strong>
+        <span style="font-size:12px;">Arraste aqui ou toque pra escolher — JPG, PNG, AVIF, HEIC</span>
+      </button>
+      <input type="file" id="fileInput" accept="image/*,.heic,.heif,.avif" multiple style="display:none;">
+
+      <div class="msg" id="uploadMsg"></div>
+      <div class="pending-list" id="pendingList"></div>
+
+      <div class="grid" id="grid"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal: novo binder -->
+<div class="modal-overlay" id="binderModal">
+  <div class="modal">
+    <h3 class="display">Add new Binder</h3>
+    <div class="field">
+      <label>Nome da pasta</label>
+      <input type="text" id="newBinderName" maxlength="60" placeholder="ex: Cartas pra troca">
+    </div>
+    <button class="btn" id="createBinderBtn">Criar binder</button>
+    <button class="btn secondary" id="cancelBinderBtn" style="margin-top:8px;">Cancelar</button>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lbClose">✕</button>
+  <img id="lbImg" src="" alt="">
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/supabase-config.js"></script>
+<script src="assets/image-utils.js"></script>
+<script>
+  let user = null, profile = null, binders = [], activeBinder = null;
+
+  async function boot(){
+    const { data:{ session } } = await supabaseClient.auth.getSession();
+    if(!session){ window.location.href = "index.html"; return; }
+    user = session.user;
+
+    const { data } = await supabaseClient.from("profiles").select("*").eq("id", user.id).single();
+    profile = data;
+    document.getElementById("userName").textContent = profile?.nickname || user.email;
+
+    loadBinders();
+  }
+
+  document.getElementById("logoutBtn").onclick = async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  };
+
+  // ---------- Binders ----------
+  async function loadBinders(){
+    const { data } = await supabaseClient
+      .from("binders").select("*").eq("user_id", user.id)
+      .order("created_at", { ascending:true });
+    binders = data || [];
+
+    const list = document.getElementById("binderList");
+    list.innerHTML = binders.map(b =>
+      `<button data-id="${b.id}" class="${activeBinder?.id === b.id ? "active" : ""}">${b.name}</button>`
+    ).join("");
+    list.querySelectorAll("button").forEach(btn => {
+      btn.onclick = () => selectBinder(btn.dataset.id);
+    });
+
+    if(!binders.length){
+      document.getElementById("emptyState").style.display = "block";
+      document.getElementById("binderView").style.display = "none";
+    } else {
+      selectBinder(activeBinder?.id && binders.find(b=>b.id===activeBinder.id) ? activeBinder.id : binders[0].id);
+    }
+  }
+
+  function selectBinder(id){
+    activeBinder = binders.find(b => b.id === id);
+    if(!activeBinder) return;
+
+    document.getElementById("emptyState").style.display = "none";
+    document.getElementById("binderView").style.display = "block";
+    document.getElementById("binderName").textContent = activeBinder.name;
+
+    const url = `${location.origin}${location.pathname.replace("dashboard.html","")}binder.html?b=${activeBinder.id}`;
+    document.getElementById("shareLink").textContent = url;
+
+    document.querySelectorAll("#binderList button").forEach(btn =>
+      btn.classList.toggle("active", btn.dataset.id === id)
+    );
+
+    document.getElementById("pendingList").innerHTML = "";
+    loadCards();
+  }
+
+  const modal = document.getElementById("binderModal");
+  document.getElementById("addBinderBtn").onclick = () => modal.classList.add("open");
+  document.getElementById("cancelBinderBtn").onclick = () => modal.classList.remove("open");
+
+  document.getElementById("createBinderBtn").onclick = async () => {
+    const name = document.getElementById("newBinderName").value.trim();
+    if(!name) return alert("Dê um nome pra pasta.");
+    const { data, error } = await supabaseClient
+      .from("binders").insert({ user_id:user.id, name }).select().single();
+    if(error) return alert("Erro: " + error.message);
+    modal.classList.remove("open");
+    document.getElementById("newBinderName").value = "";
+    activeBinder = data;
+    loadBinders();
+  };
+
+  document.getElementById("deleteBinderBtn").onclick = async () => {
+    if(!confirm(`Apagar o binder "${activeBinder.name}" e todas as cartas dele?`)) return;
+    const { data: cards } = await supabaseClient
+      .from("cards").select("image_path").eq("binder_id", activeBinder.id);
+    if(cards?.length){
+      await supabaseClient.storage.from(BUCKET).remove(cards.map(c => c.image_path));
+    }
+    await supabaseClient.from("binders").delete().eq("id", activeBinder.id);
+    activeBinder = null;
+    loadBinders();
+  };
+
+  document.getElementById("copyBtn").onclick = () => {
+    navigator.clipboard.writeText(document.getElementById("shareLink").textContent);
+    const btn = document.getElementById("copyBtn");
+    btn.textContent = "Copiado!";
+    setTimeout(() => btn.textContent = "Copiar", 1500);
+  };
+
+  // ---------- Upload → formulário "Criar folha" ----------
+  const trigger = document.getElementById("uploadTrigger");
+  const fileInput = document.getElementById("fileInput");
+  const pendingList = document.getElementById("pendingList");
+  const uploadMsg = document.getElementById("uploadMsg");
+
+  trigger.onclick = () => fileInput.click();
+  trigger.addEventListener("dragover", e => { e.preventDefault(); trigger.classList.add("drag"); });
+  trigger.addEventListener("dragleave", () => trigger.classList.remove("drag"));
+  trigger.addEventListener("drop", e => {
+    e.preventDefault(); trigger.classList.remove("drag");
+    queueFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", () => { queueFiles(fileInput.files); fileInput.value = ""; });
+
+  async function queueFiles(fileList){
+    const files = Array.from(fileList);
+    if(!files.length) return;
+
+    uploadMsg.className = "msg show ok";
+    uploadMsg.textContent = `Preparando ${files.length} imagem(ns)…`;
+
+    for(const file of files){
+      try{
+        const blob = await processImage(file);
+        addPendingCard(blob);
+      }catch(err){
+        uploadMsg.className = "msg show error";
+        uploadMsg.textContent = err.message || `Erro ao processar ${file.name}`;
+      }
+    }
+    uploadMsg.className = "msg";
+  }
+
+  function addPendingCard(blob){
+    const previewUrl = URL.createObjectURL(blob);
+    const el = document.createElement("div");
+    el.className = "pending-card";
+    el.innerHTML = `
+      <img src="${previewUrl}" alt="pré-visualização">
+      <div class="form-fields">
+        <div class="field" style="margin:0;">
+          <label>Estado da carta</label>
+          <select class="cond-select">
+            ${CONDITIONS.map(c => `<option value="${c}">${c}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Preço (BRL)</label>
+          <input type="text" class="price-input" placeholder="ex: 25,00">
+        </div>
+        <div class="checkbox-row">
+          <label><input type="checkbox" class="trade-check"> Troca</label>
+          <label><input type="checkbox" class="sale-check"> Venda</label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn small create-btn">Criar folha</button>
+      </div>
+    `;
+
+    el.querySelector(".create-btn").onclick = async (ev) => {
+      const btn = ev.target;
+      btn.disabled = true;
+      btn.textContent = "Enviando…";
+
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+      const { error: upErr } = await supabaseClient.storage
+        .from(BUCKET).upload(path, blob, { contentType:"image/jpeg", cacheControl:"3600" });
+
+      if(upErr){
+        alert("Erro ao subir imagem: " + upErr.message);
+        btn.disabled = false; btn.textContent = "Criar folha";
+        return;
+      }
+
+      const { error: dbErr } = await supabaseClient.from("cards").insert({
+        binder_id: activeBinder.id,
+        user_id: user.id,
+        image_path: path,
+        condition: el.querySelector(".cond-select").value,
+        price: el.querySelector(".price-input").value.trim(),
+        for_trade: el.querySelector(".trade-check").checked,
+        for_sale: el.querySelector(".sale-check").checked
+      });
+
+      if(dbErr){
+        alert("Erro ao salvar carta: " + dbErr.message);
+        btn.disabled = false; btn.textContent = "Criar folha";
+        return;
+      }
+
+      URL.revokeObjectURL(previewUrl);
+      el.remove();
+      loadCards();
+    };
+
+    pendingList.appendChild(el);
+  }
+
+  // ---------- Grid de cartas já salvas ----------
+  const grid = document.getElementById("grid");
+  let cardUrls = [];
+
+  async function loadCards(){
+    const { data: cards } = await supabaseClient
+      .from("cards").select("*").eq("binder_id", activeBinder.id)
+      .order("created_at", { ascending:true });
+
+    grid.innerHTML = "";
+    cardUrls = [];
+
+    (cards || []).forEach((c, i) => {
+      const url = supabaseClient.storage.from(BUCKET).getPublicUrl(c.image_path).data.publicUrl;
+      cardUrls.push(url);
+      const flags = [c.for_trade && "Troca", c.for_sale && "Venda"].filter(Boolean);
+      const el = document.createElement("div");
+      el.className = "card";
+      el.innerHTML = `
+        <span class="num">#${String(i+1).padStart(2,"0")}</span>
+        <span class="cond">${c.condition || "—"}</span>
+        <img src="${url}" alt="Carta" loading="lazy">
+        <div class="holo-sheen"></div>
+        <button class="del-btn">✕</button>
+        <div class="tag">
+          <span class="flags">${flags.map(f => `<span>${f}</span>`).join("")}</span>
+          <span class="price">${c.price ? "R$ " + c.price : "Consulte"}</span>
+        </div>
+      `;
+      el.querySelector("img").onclick = () => {
+        document.getElementById("lbImg").src = url;
+        document.getElementById("lightbox").classList.add("open");
+      };
+      el.querySelector(".del-btn").onclick = async (ev) => {
+        ev.stopPropagation();
+        if(!confirm("Apagar essa carta?")) return;
+        await supabaseClient.storage.from(BUCKET).remove([c.image_path]);
+        await supabaseClient.from("cards").delete().eq("id", c.id);
+        loadCards();
+      };
+      grid.appendChild(el);
+    });
+
+    if(!cards || !cards.length){
+      grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--ink-dim);">Nenhuma carta nesse binder ainda.</p>`;
+    }
+  }
+
+  const lb = document.getElementById("lightbox");
+  document.getElementById("lbClose").onclick = () => lb.classList.remove("open");
+  lb.addEventListener("click", e => { if(e.target === lb) lb.classList.remove("open"); });
+
+  boot();
+</script>
+
+</body>
+</html>
