@@ -34,9 +34,13 @@ arquivos soltos e dar push sem pipeline de build.
   + bucket `cards`. Todas com RLS: cada usuário só escreve no que é dele,
   leitura é pública.
 
-Autenticação usa **OTP de 6 dígitos** (não link mágico), tanto no cadastro
-quanto no reset de senha. Isso exige que os templates de e-mail
-(Authentication → Emails) usem `{{ .Token }}` em vez do link.
+Autenticação usa **OTP numérico** (não link mágico), tanto no cadastro
+quanto no reset de senha. O comprimento do código é o que o Supabase gerar
+(pode variar, não fixo em 6 — o campo no front aceita 4 a 10 dígitos). Isso
+exige que os templates de e-mail (Authentication → Emails) usem
+`{{ .Token }}` em vez do link, e que o **Custom SMTP** esteja configurado
+(o Supabase bloqueia edição de template sem SMTP próprio). SMTP em uso:
+**Resend**, domínio `letstradetcg.com.br` verificado lá.
 
 ## Estrutura
 

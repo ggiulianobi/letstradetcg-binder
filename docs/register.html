@@ -76,14 +76,14 @@
   <!-- STEP 2: código de verificação -->
   <div class="panel" id="stepOtp" style="display:none;">
     <h2 class="display">Verifique seu e-mail</h2>
-    <p class="sub">Enviamos um código de 6 dígitos para <b id="otpEmail"></b>. Digite abaixo pra confirmar sua conta.</p>
+    <p class="sub">Enviamos um código de verificação para <b id="otpEmail"></b>. Digite abaixo pra confirmar sua conta.</p>
 
     <div class="msg" id="otpMsg"></div>
 
     <form id="otpForm">
       <div class="field">
         <label>Código de verificação</label>
-        <input type="text" id="otpCode" class="otp-input" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required autocomplete="one-time-code">
+        <input type="text" id="otpCode" class="otp-input" inputmode="numeric" maxlength="10" pattern="[0-9]{4,10}" required autocomplete="one-time-code">
       </div>
       <button type="submit" class="btn" id="otpBtn">Confirmar cadastro</button>
     </form>
