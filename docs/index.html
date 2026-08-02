@@ -5,12 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LetsTradeTCG Binder — monte sua pasta digital</title>
 <meta name="description" content="Monte sua pasta digital de cartas Pokémon TCG pra facilitar suas negociações de venda e troca.">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/holo.css">
 </head>
 <body>
+
+<div class="navbar">
+  <a class="brand display" href="index.html">LetsTradeTCG Binder</a>
+</div>
 
 <header>
   <div class="eyebrow">LetsTradeTCG Binder</div>
@@ -52,6 +57,9 @@
     <input type="text" id="searchInput" placeholder="Buscar binder pelo nome...">
     <div class="search-results" id="searchResults"></div>
   </div>
+
+  <div class="directory-title">Todos os binders</div>
+  <div class="binder-directory" id="binderDirectory"></div>
 </div>
 
 <footer>
@@ -61,10 +69,28 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/supabase-config.js"></script>
 <script>
-  // Redirect if already logged in
-  supabaseClient.auth.getSession().then(({data}) => {
-    if(data.session) window.location.href = "dashboard.html";
-  });
+  // Se já estiver logado, troca o formulário de login por um atalho pro
+  // painel — sem tirar o usuário logado da home à força.
+  async function checkSession(){
+    const { data } = await supabaseClient.auth.getSession();
+    if(!data.session) return;
+
+    const { data: profile } = await supabaseClient
+      .from("profiles").select("nickname").eq("id", data.session.user.id).maybeSingle();
+    const nickname = profile?.nickname || data.session.user.email;
+
+    document.getElementById("loginPanel").innerHTML = `
+      <h2 class="display">Bem-vindo de volta, ${nickname}!</h2>
+      <p class="sub">Você já está logado.</p>
+      <a href="dashboard.html" class="btn" style="text-decoration:none;">Ir para meu painel</a>
+      <button class="btn secondary" id="logoutBtnHome" style="margin-top:10px;">Sair</button>
+    `;
+    document.getElementById("logoutBtnHome").onclick = async () => {
+      await supabaseClient.auth.signOut();
+      window.location.reload();
+    };
+  }
+  checkSession();
 
   const msg = document.getElementById("msg");
   const submitBtn = document.getElementById("submitBtn");
@@ -178,6 +204,37 @@
   document.addEventListener("click", e => {
     if(!e.target.closest(".search-box")) searchResults.className = "search-results";
   });
+
+  // ---------- Diretório completo de binders ----------
+  async function loadDirectory(){
+    const el = document.getElementById("binderDirectory");
+
+    const { data: binders, error } = await supabaseClient
+      .from("binders")
+      .select("id, name, views, profiles(nickname), cards(image_path, created_at)")
+      .order("created_at", { ascending: false })
+      .limit(48);
+
+    if(error || !binders || !binders.length){
+      el.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--ink-dim);">Nenhum binder público ainda — seja o primeiro a criar um!</p>`;
+      return;
+    }
+
+    el.innerHTML = binders.map(b => {
+      const cover = b.cards && b.cards.length
+        ? supabaseClient.storage.from(BUCKET).getPublicUrl(b.cards[0].image_path).data.publicUrl
+        : "";
+      return `
+        <a class="binder-tile" href="binder.html?b=${b.id}">
+          ${cover ? `<img src="${cover}" alt="${b.name}" loading="lazy">` : `<div class="no-cover">Sem fotos ainda</div>`}
+          <div class="info">
+            <b>${b.name}</b>
+            <span>por ${b.profiles?.nickname ?? "?"} · ${b.views} visitas</span>
+          </div>
+        </a>`;
+    }).join("");
+  }
+  loadDirectory();
 </script>
 
 </body>

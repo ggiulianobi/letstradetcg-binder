@@ -46,7 +46,7 @@ exige que os templates de e-mail (Authentication → Emails) usem
 
 ```
 docs/                     <- publicado pelo GitHub Pages
-├── index.html            Homepage: boas-vindas, login, carrossel, busca
+├── index.html            Homepage: boas-vindas, login, carrossel, diretório completo, busca
 ├── register.html         Cadastro + OTP
 ├── reset-password.html   E-mail → OTP → nova senha
 ├── dashboard.html        Painel: binders, upload, "Criar folha"
@@ -55,7 +55,8 @@ docs/                     <- publicado pelo GitHub Pages
     ├── holo.css          Todo o CSS do projeto (compartilhado)
     ├── supabase-config.js
     ├── states-br.js
-    └── image-utils.js    Compressão + conversão HEIC
+    ├── image-utils.js    Compressão + conversão HEIC
+    └── favicon.svg        Ícone genérico (2 cartas, gradiente holo) — sem mascote ainda
 supabase/schema.sql
 ```
 
@@ -105,16 +106,52 @@ essas variáveis em vez de cores soltas.
 
 ## Estado atual / próximos passos
 
-**MVP em produção, testado de ponta a ponta em 2026-08-02**: cadastro →
-OTP por e-mail → criar binder → funcionando. Site publicado e domínio
-próprio no ar.
+**MVP em produção desde 2026-08-02**: cadastro → OTP por e-mail → criar
+binder → funcionando. Site publicado e domínio próprio no ar.
 
-Pendências conhecidas:
+Rodada de 9 melhorias de design/UX levantadas pelo dono, sendo entregues
+**fase por fase** (ele testa no site entre cada fase antes de eu seguir
+pra próxima). Progresso:
 
-1. Ideias não implementadas: editar carta já criada, reordenar cartas,
-   página de perfil público do usuário listando todos os binders dele.
-2. Melhorias de UX/layout/imagens — usuário vai trazer uma lista na
-   próxima sessão.
+- ✅ **Fase 0** (schema): tabelas `card_items` e `trade_requests` +
+  função `complete_trade_request` adicionadas em `supabase/schema.sql`
+  (bloco no fim do arquivo, idempotente). **Ainda precisa ser rodado
+  manualmente no SQL Editor do Supabase** — só esse bloco novo, não o
+  arquivo inteiro (as tabelas antigas já existem e têm dado real).
+- ✅ **Fase 1** (ajustes rápidos): botão de apagar carta não sobrepõe
+  mais o preço (`holo.css`); removido o redirect forçado da home pra
+  quem já está logado (agora mostra um atalho "Ir para meu painel" em
+  vez de chutar o usuário pra `dashboard.html` — isso também resolvia a
+  reclamação de "não consigo sair do dashboard"); marca "LetsTradeTCG
+  Binder" virou link clicável em `.navbar`, presente em todas as
+  páginas incluindo `binder.html` (que antes não tinha nenhum header de
+  marca); home ganhou um diretório completo de binders (grid abaixo do
+  carrossel/busca, não só top 10); favicon genérico criado
+  (`assets/favicon.svg`, 2 cartas com gradiente holo — **não é a
+  mascote "Leya"**, isso ficou de fora por não ter ferramenta de geração
+  de imagem nesse ambiente; trocar por arte de verdade é troca de 1
+  linha de `<link>` quando tiver a arte pronta).
+- ⏳ **Fase 2** (pendente): classificação dinâmica por foto — uma foto
+  pode conter várias cartas, cada uma com sua própria linha de
+  condição/preço/troca-venda/observação (usa `card_items`). Grid mostra
+  contador `N×` quando tem mais de 1 item; lightbox ganha painel de
+  texto com o detalhe de cada linha.
+- ⏳ **Fase 3** (pendente): botão "Let's Trade!" no binder público
+  (visitante logado manda pedido de interesse pro dono, com link do
+  próprio binder dele); painel de notificações no dashboard; checkbox
+  "troca feita" (RPC `complete_trade_request`, fecha no primeiro clique
+  de qualquer um dos lados).
+- ⏳ **Fase 4** (pendente): link amigável `letstradetcg.com.br/<apelido>`
+  via `docs/404.html` (GitHub Pages serve esse arquivo pra path
+  desconhecido sem mudar a URL) — vira a página de perfil público
+  listando os binders do usuário + contador de trocas concluídas;
+  bloquear apelidos reservados (`index, register, reset-password,
+  dashboard, binder, 404, cname, favicon`) no cadastro.
+
+Plano detalhado (schema exato, decisões de RLS, UX do grid multi-item
+etc.) está documentado nesta sessão — se uma sessão futura for continuar
+a partir daqui e quiser o raciocínio completo por trás de cada fase, é
+só perguntar, mas os pontos essenciais já estão resumidos acima.
 
 ## Histórico de sessões
 
@@ -149,3 +186,28 @@ Pendências conhecidas:
   inteira). Dropado e recriado do zero com o `schema.sql` correto do
   repo — pendente antigo do projeto que nunca tinha sido de fato
   aplicado no banco.
+
+**2026-08-02 — Rodada de melhorias de design/UX, Fase 1 de 5**
+- Dono levantou 9 pedidos testando o site de verdade (favicon/mascote,
+  bug visual do botão de apagar em cima do preço, classificação
+  dinâmica multi-carta por foto, header/navegação consistente, feature
+  "Let's Trade!" de notificação de interesse em troca, link amigável
+  por apelido, metadados no lightbox, contador de trocas concluídas,
+  bug de não conseguir sair do dashboard). Planejado em fases
+  (Fase 0 = schema, Fases 1-4 = features), entrega com pausa pro dono
+  testar entre cada fase — plano completo ficou salvo localmente em
+  `C:\Users\giuli\.claude\plans\lazy-skipping-moler.md` na máquina do
+  dono (fora do repo).
+- Decisão de design pro pedido de troca: **um clique fecha a troca pros
+  dois lados** (não exige confirmação mútua) — e a conclusão passa por
+  uma função `security definer` (`complete_trade_request`), não por uma
+  policy de UPDATE direta, porque RLS não consegue restringir só uma
+  coluna por linha (mesmo padrão já usado em `increment_binder_views`).
+- Decisão pro link amigável: usar `docs/404.html` como truque padrão de
+  roteamento em GitHub Pages estático — GH Pages serve esse arquivo (URL
+  não muda) pra qualquer path sem arquivo real correspondente, então ele
+  vira a implementação da página de perfil público por apelido.
+- Mascote "Leya" ficou de fora dessa rodada (sem ferramenta de geração
+  de imagem no ambiente) — o dono topou seguir só com favicon genérico
+  por enquanto.
+- Fase 1 implementada e no ar: ver resumo em "Estado atual" acima.

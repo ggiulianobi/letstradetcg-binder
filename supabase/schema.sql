@@ -124,3 +124,96 @@ create policy "Usuário só apaga da própria pasta"
     bucket_id = 'cards'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ======================================================
+-- Adições — rodada de melhorias (classificação dinâmica por
+-- foto + notificações de troca). Bloco idempotente, seguro pra
+-- rodar de novo (não mexe nas tabelas já existentes).
+-- ======================================================
+
+-- 5) Linhas de classificação dentro de uma mesma foto (uma foto pode
+-- conter várias cartas, cada uma com seu estado/preço/observação)
+create table if not exists card_items (
+  id uuid primary key default gen_random_uuid(),
+  card_id uuid references cards(id) on delete cascade not null,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  condition text,
+  price text default '',
+  for_trade boolean default false,
+  for_sale boolean default false,
+  note text default '',
+  created_at timestamptz default now()
+);
+
+alter table card_items enable row level security;
+
+create policy "Itens de carta são públicos para leitura"
+  on card_items for select
+  using (true);
+
+create policy "Usuário só insere item próprio"
+  on card_items for insert
+  with check (auth.uid() = user_id);
+
+create policy "Usuário só atualiza item próprio"
+  on card_items for update
+  using (auth.uid() = user_id);
+
+create policy "Usuário só apaga item próprio"
+  on card_items for delete
+  using (auth.uid() = user_id);
+
+-- 6) Pedidos de troca ("Let's Trade!")
+create table if not exists trade_requests (
+  id uuid primary key default gen_random_uuid(),
+  from_user_id uuid references auth.users(id) on delete cascade not null,
+  to_user_id uuid references auth.users(id) on delete cascade not null,
+  from_binder_id uuid references binders(id) on delete set null,
+  to_binder_id uuid references binders(id) on delete cascade not null,
+  status text not null default 'pending',
+  from_completed boolean default false,
+  to_completed boolean default false,
+  created_at timestamptz default now(),
+  check (from_user_id <> to_user_id)
+);
+
+alter table trade_requests enable row level security;
+
+create policy "Só as partes envolvidas veem o pedido de troca"
+  on trade_requests for select
+  using (auth.uid() = from_user_id or auth.uid() = to_user_id);
+
+create policy "Usuário só cria pedido em nome próprio"
+  on trade_requests for insert
+  with check (auth.uid() = from_user_id);
+
+-- Sem policy de update direto: a conclusão da troca passa pela função
+-- abaixo (security definer), assim ninguém sobrescreve o lado do outro.
+create or replace function complete_trade_request(request_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  req trade_requests%rowtype;
+begin
+  select * into req from trade_requests where id = request_id;
+
+  if req.id is null then
+    raise exception 'Pedido de troca não encontrado';
+  end if;
+
+  if auth.uid() <> req.from_user_id and auth.uid() <> req.to_user_id then
+    raise exception 'Você não faz parte desse pedido de troca';
+  end if;
+
+  if auth.uid() = req.from_user_id then
+    update trade_requests set from_completed = true, status = 'completed' where id = request_id;
+  else
+    update trade_requests set to_completed = true, status = 'completed' where id = request_id;
+  end if;
+end;
+$$;
+
+grant execute on function complete_trade_request(uuid) to authenticated;
