@@ -131,8 +131,9 @@ pra próxima). Progresso:
   mascote "Leya"**, isso ficou de fora por não ter ferramenta de geração
   de imagem nesse ambiente; trocar por arte de verdade é troca de 1
   linha de `<link>` quando tiver a arte pronta).
-- ✅ **Fase 2 + extra** (classificação dinâmica, edição de carta e
-  toggle público/privado): uma foto pode ter várias "linhas" de
+- ✅ **Fase 2 + extra** (testada e confirmada pelo dono em produção —
+  classificação dinâmica, edição de carta e toggle público/privado):
+  uma foto pode ter várias "linhas" de
   classificação (condição/preço/troca-venda/observação), usando
   `card_items`. Upload (`dashboard.html`) tem botão "+ Adicionar linha";
   cartas já criadas agora têm botão de **editar** (lápis, abre modal com
@@ -241,7 +242,8 @@ só perguntar, mas os pontos essenciais já estão resumidos acima.
   nasce **privado**, e "não pesquisável" não bloqueia o link direto
   (só tira de busca/carrossel/diretório) — decisão importante de
   produto/segurança, registrada pra não repetir a pergunta.
-- Fase 2 (+ os 2 extras) implementada e no ar: ver resumo em "Estado
-  atual" acima. Faltou rodar no Supabase o bloco de migração
-  (`alter table binders add column is_public...`), preciso confirmar
-  com o dono se já rodou antes de considerar essa fase 100% testada.
+- Fase 2 (+ os 2 extras) implementada, migração `is_public` rodada no
+  Supabase e **testada e confirmada pelo dono**: editar carta, upload
+  com múltiplas linhas, grid `N×`/"N itens", lightbox com painel de
+  metadados e toggle público/privado — tudo funcionando. Fase 2
+  encerrada, próxima é a Fase 3 (Let's Trade!).
